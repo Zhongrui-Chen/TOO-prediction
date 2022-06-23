@@ -115,9 +115,9 @@ def parse_local_features_of_var(var, padded_seq, margin):
     return altered_seq, ref_region_start, ref_region_end, alt_region_start, alt_region_end
 
 # def get_feature_matrix(tumour_ids, all_genes, mut_dict, k):
-def get_feature_matrix(tumour_ids, dataset_dict, k):
+def get_feature_matrix(dataset_dict, tumour_ids, k):
     ''' Create the N * 716 * 64 feature matrix '''
-    # tumour_ids = dataset_dict['qualified_tumour_ids']
+    # tumour_ids = dataset_dict['tumour_ids']
     all_genes = dataset_dict['genes']
     mut_dict = dataset_dict['mut_dict']
     hp = hgvs.parser.Parser()
@@ -155,7 +155,7 @@ def get_feature_matrix(tumour_ids, dataset_dict, k):
 
 def generate_feature_npy(dataset_dict, q, k):
     tumour_ids = filter_dataset(dataset_dict, q)
-    fmatrix = get_feature_matrix(tumour_ids, dataset_dict, k)
+    fmatrix = get_feature_matrix(dataset_dict, tumour_ids, k)
     filepath = './data/interim/features/features_q={}_k={}.npy'.format(q, k)
     np.save(filepath, fmatrix)
     return filepath
@@ -165,8 +165,8 @@ def main():
     argparser.add_argument('--q', help='quality threshold', type=int)
     argparser.add_argument('--k', help='k of k-mers', type=int)
     args = argparser.parse_args()
-    q = args.q if args.q else 5
-    k = args.k if args.k else 3
+    q = args.q
+    k = args.k
     logger = logging.getLogger(__name__)
     # Get the feature matrix
     # with open('./config.json', 'r') as f:
@@ -175,8 +175,8 @@ def main():
     with open('./data/interim/dataset_dict.pkl', 'rb') as f:
         dataset_dict = pickle.load(f)
     # logger.info('The feature matrix has been created with the shape {}'.format(fmatrix.shape))
-    logger.info('Generating features for q = {} and k = {}'.format(q, k))
-    filepath = generate_feature_npy(dataset_dict, q, k) 
+    logger.info('Generating features for q = {}, k = {}'.format(q, k))
+    filepath = generate_feature_npy(dataset_dict, q, k)
     logger.info('The feature matrix is stored into {}'.format(filepath))
 
 if __name__ == '__main__':

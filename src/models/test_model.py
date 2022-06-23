@@ -1,45 +1,70 @@
-import pickle
+# import pickle
 import torch
-import argparse
+import seaborn as sns
+from matplotlib import pyplot as plt
+# import argparse
+# from src.data.quality_control import interested_sites
+from sklearn.metrics import confusion_matrix, accuracy_score, balanced_accuracy_score, classification_report, precision_recall_fscore_support
 from src.models.networks.base import BaseNet
+from src.utils.model_config import ModelConfigArgumentParser
+from src.data.quality_control import interested_sites
 
-def test_model(model, test_data, device, k=3):
-    model = BaseNet(k)
-    model.load_state_dict(model.state_dict())
-    model.to(device)
+def get_site_label(idx):
+    return interested_sites[idx]
+
+def get_confusion_matrix(y_true, y_pred):
+    true_labels = [interested_sites[y] for y in y_true]
+    pred_labels = [interested_sites[y] for y in y_pred]
+    return confusion_matrix(true_labels, pred_labels, labels=interested_sites, normalize='true') # Recall
+
+def save_confusion_heatmap(cm, filepath):
+    fig, ax = plt.subplots(figsize=(15, 10))
+    ax = sns.heatmap(cm, annot=True, cmap='Blues')
+    ax.set_xticklabels(interested_sites, rotation=90)
+    ax.set_yticklabels(interested_sites, rotation=0)
+    fig.savefig(filepath)
+    print('The confusion matrix is saved to {}'.format(filepath))
+    plt.close(fig)
+
+def inference(model, test_dataloader, device):
     model.eval()
-    X_test = test_data['X']
-    y_test = test_data['y']
-    # Inference
-    corrects = 0
-    testset = list(zip(X_test, y_test))
+    y_true = []
+    y_pred = []
     with torch.no_grad():
-        for X, y in testset:
-            X = torch.Tensor(X).to(device)
+        for X, y in test_dataloader:
+            X, y = X.to(device), y.to(device)
             outputs = model(X)
-            _, predicted = torch.max(outputs, 1)
-            corrects += (int(predicted) == y)
-    return corrects, len(testset), corrects / len(testset)
+            pred = torch.argmax(outputs, 1)
+            # true_pred_pairs.append((y.item(), pred.item()))
+            y_true.append(y.item())
+            y_pred.append(pred.item())
+    return y_true, y_pred
+
+def test_model(model, test_dataloader, q, k, device):
+    y_true, y_pred = inference(model, test_dataloader, device)
+    # Generate the confusion matrix and save it as graph
+    cm = get_confusion_matrix(y_true, y_pred)
+    save_confusion_heatmap(cm, './reports/figures/confusion-heatmap-q={}-k={}.png'.format(q, k))
+    # Report the metrics
+    print(classification_report(y_true, y_pred, target_names=interested_sites))
+    print('The balanced accuracy is {}'.format(balanced_accuracy_score(y_true, y_pred)))
 
 def main():
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument('--mps', help='Option to enable M1 GPU support', action='store_true')
-    argparser.add_argument('model_name', help='Specify the model name', type=str)
-    args = argparser.parse_args()
-    model_name = args.model_name
-    device = torch.device('mps' if args.mps else 'cpu')
+    model_config = ModelConfigArgumentParser().get_config()
+    device = torch.device('mps' if model_config.mps else 'cpu')
+    model_name = model_config.get_model_name()
 
     # Load the model
-    model = BaseNet()
+    model = BaseNet(model_config.k, model_config.hidden_size)
     model.load_state_dict(torch.load('./models/' + model_name))
     
     # Load the testing data
-    with open('./data/interim/test_data/model_q=70_k=3.pt.pkl', 'rb') as f:
-        test_data = pickle.load(f)
+    with open('./data/interim/test_data/' + model_name, 'rb') as f:
+        test_data = torch.load(f)
     
     # Test and report
-    corrects, total, accuracy = test_model(model, test_data, device)
-    print('Testing accuracy: {} ({} / {})'.format(accuracy, corrects, total))
+    test_model(model, test_data, model_config.q, model_config.k, device)
+    # print('Testing accuracy: {} ({} / {})'.format(accuracy, corrects, total))
 
 if __name__ == '__main__':
     main()

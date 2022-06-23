@@ -4,16 +4,49 @@
 # import logging
 # import pickle
 
-def filter_dataset(dataset_dict, threshold):
-    quality_ids = []
-    for tumour_id in dataset_dict['tumour_ids']:
+interested_sites = [
+    'kidney',
+    'skin',
+    'liver',
+    'breast',
+    'ovary',
+    'haematopoietic_and_lymphoid_tissue',
+    'prostate',
+    'pancreas',
+    'central_nervous_system',
+    'lung',
+    'oesophagus',
+    'thyroid',
+    'bone'
+]
+# interested_sites = ['skin',
+#     'large_intestine',
+#     'stomach',
+#     'endometrium',
+#     'lung',
+#     'thyroid',
+#     'soft_tissue'
+# ]
+
+def filter_by_sites(dataset_dict, tumour_ids):
+    return [tid for tid in tumour_ids if dataset_dict['primary_site_dict'][tid] in interested_sites]
+
+def filter_by_quality(dataset_dict, tumour_ids, q):
+    ids = []
+    for tid in tumour_ids:
         count = 0
         for gene in dataset_dict['genes']:
-            if (tumour_id, gene) in dataset_dict['mut_dict']:
+            if (tid, gene) in dataset_dict['mut_dict']:
                 count += 1
-        if count >= threshold:
-            quality_ids.append(tumour_id)
-    return quality_ids
+        if count >= q:
+            ids.append(tid)
+    return ids
+
+def filter_dataset(dataset_dict, q):
+    ids = dataset_dict['tumour_ids']
+    ids = filter_by_quality(dataset_dict, ids, q)
+    ids = filter_by_sites(dataset_dict, ids)
+    return ids
 
 # def main():
 #     logger = logging.getLogger(__name__)
