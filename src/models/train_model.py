@@ -1,16 +1,14 @@
 import logging
 import json
-from random import random
 import time
 import copy
 import pickle
-import numpy as np
+# import numpy as np
 from sklearn.metrics import balanced_accuracy_score
 import torch
 from src.models.networks.base import BaseNet
 import torch.nn as nn
 from src.utils.model_config import ModelConfigArgumentParser
-import warnings
 
 import torch.optim as optim
 # from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau, StepLR
