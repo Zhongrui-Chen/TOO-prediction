@@ -1,34 +1,68 @@
-import logging
-import pandas as pd
+# TODO: Add header comments
+
 import numpy as np
-import argparse
 import pickle
 from tqdm import tqdm
 import itertools
 import hgvs.parser
-from src.data import cds_lookup
-from src.data.quality_control import filter_dataset
-from src.utils.uhgvs import parse_mut_type
-from src.utils.useq import get_reference_by_gene_and_accession_number, seq_between, nuc_at
-# cleansed_export_filepath = './data/processed/CleansedMutantExportCensus.tsv'
+from src.utils.hgvs_parsing import is_range, parse_mut_type
+from src.utils.sequences import get_cds_lookup_table, reverse_complement, get_reference_by_gene_and_accession_number, seq_between, nuc_at
+
+bin_length = 1000000 # 1 million
+num_of_chromosome = 22
+feature_filepath = './data/interim/features/features.npy'
+hp = hgvs.parser.Parser()
+k_mers = 3
+vocab = [''.join(p) for p in itertools.product('ATGC', repeat=k_mers)]
+cds_lookup_table = get_cds_lookup_table()
+# Load the dataset
+with open('./data/interim/dataset.pkl', 'rb') as f: # FIXME
+    dataset = pickle.load(f)
+
 
 class UnknownMutTypeException(Exception):
     pass
 
-def is_range(pos):
-    return '_' in str(pos)
+def calculate_bin_counts():
+    '''
+    Calculate how many bins should be allocated for each chromosome
+    '''
+    bin_counts = {}
+    for (_, chrom), gmuts in dataset['gmut_dict'].items():
+        for mut in gmuts:
+            var = hp.parse_hgvs_variant(mut)
+            pos = var.posedit.pos
+            if is_range(pos):
+                pos = pos.start
+            bin_idx = int(int(str(pos)) / bin_length)
+            if chrom in bin_counts:
+                if bin_idx > bin_counts[chrom]:
+                    bin_counts[chrom] = bin_idx
+            else:
+                bin_counts[chrom] = bin_idx
+    bin_counts_list = np.zeros(num_of_chromosome, dtype=int)
+    for chrom in range(1, num_of_chromosome + 1):
+        chrom_str = str(chrom)
+        bin_counts_list[chrom - 1] = bin_counts[chrom_str]
+    return bin_counts_list
 
-def reverse_complement(nuc):
-    if nuc == 'A':
-        return 'G'
-    elif nuc == 'T':
-        return 'C'
-    elif nuc == 'G':
-        return 'A'
-    elif nuc == 'C':
-        return 'T'
+def get_gmut_distribution_vector(sample_id, bin_counts):
+    bin_counts_cumsum = np.cumsum(bin_counts)
+    distro_vec = np.zeros(np.sum(bin_counts))
+    for chrom in range(1, num_of_chromosome + 1):
+        chrom_str = str(chrom)
+        if (sample_id, chrom_str) in dataset['gmut_dict']:
+            for mut in dataset['gmut_dict'][(sample_id, chrom_str)]:
+                var = hp.parse_hgvs_variant(mut)
+                pos = var.posedit.pos
+                if is_range(pos):
+                    pos = pos.start
+                bin_idx = int(int(str(pos)) / bin_length)
+                distro_vec[bin_counts_cumsum[chrom - 2] if chrom > 1 else 0 + bin_idx] += 1
+    norm_factor = np.sum(distro_vec) if np.sum(distro_vec) > 0 else 1
+    return (distro_vec / norm_factor).reshape((1, -1))
 
-def parse_local_features_of_var(var, padded_seq, margin):
+def parse_patterns_of_var(var, padded_seq, margin):
     mut_type = parse_mut_type(var)
     # Pad sequence at ends
     if mut_type == 'sub':
@@ -114,73 +148,53 @@ def parse_local_features_of_var(var, padded_seq, margin):
         raise UnknownMutTypeException('Unknown mutation {} cannot be parsed'.format(var))
     return altered_seq, ref_region_start, ref_region_end, alt_region_start, alt_region_end
 
-# def get_feature_matrix(tumour_ids, all_genes, mut_dict, k):
-def get_feature_matrix(dataset_dict, tumour_ids, k):
-    ''' Create the N * 716 * 64 feature matrix '''
-    # tumour_ids = dataset_dict['tumour_ids']
-    all_genes = dataset_dict['genes']
-    mut_dict = dataset_dict['mut_dict']
-    hp = hgvs.parser.Parser()
-    lookup_table = cds_lookup.get_cds_lookup_table()
-    k_mers_vocab = [''.join(p) for p in itertools.product('ATGC', repeat=k)]
-    fmatrix = np.zeros((len(tumour_ids), len(all_genes), len(k_mers_vocab)), dtype=np.float32)
-    # logger.info('Building the feature matrix')
-    for tumour_idx, tumour_id in enumerate(tqdm(tumour_ids)):
-        for gene_idx, gene in enumerate(all_genes):
-            if (tumour_id, gene) in mut_dict:
-                for mut in mut_dict[(tumour_id, gene)]:
-                    var = hp.parse_hgvs_variant(mut)
-                    # mut_type = parse_mut_type(var)
-                    ac = var.ac
-                    seq_ref = get_reference_by_gene_and_accession_number(gene, ac, lookup_table)
-                    seq = lookup_table.fetch(seq_ref).upper()
-                    pad = '='
-                    margin = k - 1
-                    padded_seq = margin * pad + seq + margin * pad
-                    altered_seq, ref_region_start, ref_region_end, alt_region_start, alt_region_end = parse_local_features_of_var(var, padded_seq, margin)
-                    # Collect old and new patterns
-                    for idx in range(ref_region_start, ref_region_end):
-                        mer = seq_between(padded_seq, idx, idx+margin)
-                        if '=' in mer or '' == mer:
-                            continue
-                        mer_idx = k_mers_vocab.index(mer)
-                        fmatrix[tumour_idx, gene_idx, mer_idx] -= 1
-                    for idx in range(alt_region_start, alt_region_end):
-                        mer = seq_between(altered_seq, idx, idx+margin)
-                        if '=' in mer or '' == mer:
-                            continue
-                        mer_idx = k_mers_vocab.index(mer)
-                        fmatrix[tumour_idx, gene_idx, mer_idx] += 1
-    return fmatrix
+def get_cmut_pattern_vector(sample_id, k_mers=3):
+    pattern_vec = np.zeros(len(dataset['genes']) * len(vocab))
+    for gene_idx, gene in enumerate(dataset['genes']):
+        if (sample_id, gene) in dataset['cmut_dict']:
+            for mut in dataset['cmut_dict'][(sample_id, gene)]:
+                var = hp.parse_hgvs_variant(mut)
+                ac = var.ac
+                seq_ref = get_reference_by_gene_and_accession_number(gene, ac, cds_lookup_table)
+                seq = cds_lookup_table.fetch(seq_ref).upper()
+                pad = '='
+                margin = k_mers - 1
+                padded_seq = margin * pad + seq + margin * pad
+                altered_seq, ref_region_start, ref_region_end, alt_region_start, alt_region_end = parse_patterns_of_var(var, padded_seq, margin)
+                # Collect old and new patterns
+                for idx in range(ref_region_start, ref_region_end):
+                    mer = seq_between(padded_seq, idx, idx+margin)
+                    if '=' in mer or '' == mer:
+                        continue
+                    mer_idx = vocab.index(mer)
+                    pattern_vec[gene_idx * len(vocab) + mer_idx] -= 1
+                for idx in range(alt_region_start, alt_region_end):
+                    mer = seq_between(altered_seq, idx, idx+margin)
+                    if '=' in mer or '' == mer:
+                        continue
+                    mer_idx = vocab.index(mer)
+                    pattern_vec[gene_idx * len(vocab) + mer_idx] += 1
+    return pattern_vec.reshape((1, -1))
 
-def generate_feature_npy(dataset_dict, q, k):
-    tumour_ids = filter_dataset(dataset_dict, q)
-    fmatrix = get_feature_matrix(dataset_dict, tumour_ids, k)
-    filepath = './data/interim/features/features_q={}_k={}.npy'.format(q, k)
-    np.save(filepath, fmatrix)
-    return filepath
+def get_feature_matrix():
+    feat_matrix = []
+    bin_counts = calculate_bin_counts()
+    for sample_id in tqdm(dataset['sample_ids']):
+        distro_vec  = get_gmut_distribution_vector(sample_id, bin_counts)
+        pattern_vec = get_cmut_pattern_vector(sample_id)
+        feat_vec = np.concatenate((distro_vec, pattern_vec), axis=1)
+        feat_matrix.append(pattern_vec)
+    feat_matrix = np.concatenate(feat_matrix, axis=0, dtype=np.float32)
+    print('Non-zero count:', np.count_nonzero(feat_matrix)) # FIXME
+    return feat_matrix
 
 def main():
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument('--q', help='quality threshold', type=int)
-    argparser.add_argument('--k', help='k of k-mers', type=int)
-    args = argparser.parse_args()
-    q = args.q
-    k = args.k
-    logger = logging.getLogger(__name__)
-    # Get the feature matrix
-    # with open('./config.json', 'r') as f:
-    #     config = json.load(f)
-    # k_mers = config['kMers']
-    with open('./data/interim/dataset_dict.pkl', 'rb') as f:
-        dataset_dict = pickle.load(f)
-    # logger.info('The feature matrix has been created with the shape {}'.format(fmatrix.shape))
-    logger.info('Generating features for q = {}, k = {}'.format(q, k))
-    filepath = generate_feature_npy(dataset_dict, q, k)
-    logger.info('The feature matrix is stored into {}'.format(filepath))
+    # Generate a feature vector for each sample to constrcut the feature matrix
+    print('[Generating feature matrix]')
+    fmatrix = get_feature_matrix()
+    print(fmatrix.shape)
+    np.save(feature_filepath, fmatrix)
+    print('The feature matrix is stored in {}'.format(feature_filepath))
 
 if __name__ == '__main__':
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(level=logging.INFO, format=log_fmt)
-
     main()

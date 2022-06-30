@@ -1,3 +1,6 @@
+def is_range(pos):
+    return '_' in str(pos)
+    
 def parse_mut_type(var):
     ''' Input: var: hgvs.sequencevariant.SequenceVariant '''
     edit = str(var.posedit.edit)
@@ -15,10 +18,13 @@ def parse_mut_type(var):
         mut_type = 'unk'
     return mut_type
 
-def is_hgvs_valid(hgvs, hp):
-    ''' Check if a hgvs description is valid to our demand. '''
-    var = hp.parse_hgvs_variant(hgvs)
+def is_hgvs_valid(var):
+    ''' Check if a hgvs description is valid to our demand '''
     pos = str(var.posedit.pos)
     if '-' in pos or '*' in pos or '+' in pos:
         return False
     return True
+
+def parse_chrom(var):
+    ''' Parse the chromosome of a genomic HGVS description '''
+    return var.ac.split('chr')[-1]

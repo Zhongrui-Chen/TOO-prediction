@@ -1,16 +1,13 @@
 import torch.nn as nn
-# import torch.nn.functional as F
-# import torch
-from src.data.quality_control import interested_sites
 
 class BaseNet(nn.Module):
-    def __init__(self, k=3, hidden_size=128):
+    def __init__(self, in_size, hidden_size, out_size):
         super(BaseNet, self).__init__()
         self.flatten = nn.Flatten()
         self.relu = nn.ReLU()
-        self.fc1 = nn.Linear(716 * (4 ** k), hidden_size)
+        self.fc1 = nn.Linear(in_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, len(interested_sites))
+        self.fc3 = nn.Linear(hidden_size, out_size)
         self.droput = nn.Dropout(0.2)
         
     def forward(self, x):

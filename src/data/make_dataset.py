@@ -119,12 +119,12 @@ def make_dataset(df, all_sample_ids, all_genes):
 def main():
     # Read in the COSMIC data as dataframe
     df = pd.read_csv('./data/raw/CosmicMutantExportCensus.tsv', delimiter='\t', encoding='ISO-8859-1')
-    # df = df.sample(n=32) # FIXME
+    # df = df.sample(n=16384) # FIXME
 
     # Filter and cleanse the raw dataframe
-    print('[Data filtering...]')
+    print('[Data filtering]')
     df = data_filtering(df)
-    print('[Data cleansing...]')
+    print('[Data cleansing]')
     df = data_cleansing(df)
 
     # Get the summary info
@@ -134,10 +134,12 @@ def main():
     print('There are {} genes in total'.format(len(all_genes)))
 
     # Make the dataset
+    print('[Making the dataset]')
     dataset = make_dataset(df, all_sample_ids, all_genes)
     # print(dataset['gmut_dict']) # FIXME
-
-    with open('./data/interim/dataset.pkl', 'wb') as f:
+    filepath = './data/interim/dataset.pkl' # FIXME
+    print('The dataset is stored in {}'.format(filepath))
+    with open(filepath, 'wb') as f:
         pickle.dump(dataset, f)
 
 if __name__ == '__main__':

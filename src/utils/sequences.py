@@ -1,5 +1,20 @@
+import pysam
+cds_fasta_filepath = './data/external/All_COSMIC_Genes.fasta'
+def get_cds_lookup_table():
+    return pysam.FastaFile(cds_fasta_filepath)
+
 def nuc_at(seq, loc):
     return seq[loc-1]
+
+def reverse_complement(nuc):
+    if nuc == 'A':
+        return 'G'
+    elif nuc == 'T':
+        return 'C'
+    elif nuc == 'G':
+        return 'A'
+    elif nuc == 'C':
+        return 'T'
 
 def seq_between(seq, start, end):
     # Included
