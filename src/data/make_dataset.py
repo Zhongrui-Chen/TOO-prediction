@@ -1,5 +1,12 @@
+# -------------------------------------------------------------
+# Make the dataset by processing the COSMIC mutation TSV file
+# Steps:
+#   1. Filter and cleanse the dataframe
+#   2. Make the dataset by constructing an aggregative dictionary
+#   3. Pickle the dataset dict and store it in the disk
+# -------------------------------------------------------------
+
 import pickle
-from sklearn import datasets
 from tqdm import tqdm
 import pandas as pd
 import hgvs.parser
