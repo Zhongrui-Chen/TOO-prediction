@@ -2,10 +2,10 @@
 import torch
 import seaborn as sns
 from matplotlib import pyplot as plt
-# import argparse
+import numpy as np
 from sklearn.metrics import confusion_matrix, accuracy_score, balanced_accuracy_score, classification_report, precision_recall_fscore_support
 from src.models.networks.base import BaseNet
-from src.utils.model_versioning import ModelConfigArgumentParser, get_name
+from src.utils.model_versioning import ModelConfigArgumentParser
 from src.data.make_dataset import sites_of_interest
 
 def get_site_label(idx):
@@ -49,24 +49,24 @@ def test_model(model, model_id, test_dataloader, device):
     print('The balanced accuracy is {}'.format(balanced_accuracy_score(y_true, y_pred)))
 
 def main():
-    # model_config = ModelConfigArgumentParser().get_config()
-    device = torch.device('cpu')
-    # model_name = model_config.get_model_name()
-    model_id = '20220701-0452'
+    # Get the configuration via the command line
+    model_config = ModelConfigArgumentParser().get_config()
+    device = torch.device('mps' if model_config.mps else 'cpu')
 
     # Load the testing data
-    with open('./data/interim/test_data/' + model_id, 'rb') as f:
-        test_data = torch.load(f)
+    try:
+        test_data_filepath = './data/interim/test_data/' + model_config.model_id
+        with open(test_data_filepath, 'rb') as f:
+            test_data = torch.load(f)
+    except:
+        raise FileNotFoundError('Test data {} not found'.format(test_data_filepath))
     # Load the model
-    in_size = 36480
-    hidden_size = 256
-    out_size = 13
-    model = BaseNet(in_size, hidden_size, out_size)
-    model.load_state_dict(torch.load('./models/' + get_name('model', model_id, 'pt')))
+    in_size = len(test_data.dataset[0][0])
+    model = BaseNet(in_size, model_config.hidden_size, len(sites_of_interest))
+    model.load_state_dict(torch.load('./models/' + model_config.get_model_name()))
     
     # Test and report
-    test_model(model, model_id, test_data, device)
-    # print('Testing accuracy: {} ({} / {})'.format(accuracy, corrects, total))
+    test_model(model, model_config.model_id, test_data, device)
 
 if __name__ == '__main__':
     main()

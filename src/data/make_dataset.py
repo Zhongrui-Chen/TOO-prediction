@@ -7,140 +7,171 @@
 # -----------------------------------------------------------------
 
 import pickle
+from collections import defaultdict
 from tqdm import tqdm
 import pandas as pd
-import hgvs.parser
-from src.utils.hgvs_parsing import is_hgvs_valid, parse_chrom
+import argparse
+# import hgvs.parser
+from src.utils.hgvs_parsing import is_SNV, is_coding_mut, parse_cmut
+from src.utils.sequences import get_cds_lookup_table, get_flanks, InvalidMutError
 
 # Define the interested columns and primary sites
-cols_of_interest = ['Gene name', 'ID_sample', 'Primary site', 'Tier', 'HGVSC', 'HGVSG']
+cols_of_interest = ['Gene name', 'ID_sample', 'Primary site', 'Genome-wide screen', 'Sample Type', 'HGVSC', 'HGVSG']
+# sites_of_interest = [
+#     'kidney', 'skin', 'liver', 'breast', 'ovary', 'haematopoietic_and_lymphoid_tissue',
+#     'prostate', 'pancreas', 'central_nervous_system', 'lung', 'oesophagus', 'thyroid', 'bone' ]
 sites_of_interest = [
-    'kidney', 'skin', 'liver', 'breast', 'ovary', 'haematopoietic_and_lymphoid_tissue',
-    'prostate', 'pancreas', 'central_nervous_system', 'lung', 'oesophagus', 'thyroid', 'bone' ]
+    'breast', 'kidney', 'liver', 'ovary', 'prostate',
+    'endometrium', 'large_intestine', 'lung', 'pancreas', 'skin'
+] # The same primary sites that are used for classifiers in [Marquard et al.](https://bmcmedgenomics.biomedcentral.com/articles/10.1186/s12920-015-0130-0)
 
-# Instantiate the hgvs parser
-hp = hgvs.parser.Parser()
+# Instantiate the hgvs parser // we no longer use it limited by the overhead
+# hp = hgvs.parser.Parser()
 
-def data_filtering(df):
-    '''
-    Filter the rows as per predefined standards
-    '''
-    # Select interested columns
-    df = df[cols_of_interest]
+def keep_SNVs(df):
+    criterion = df['HGVSC'].map(lambda x: is_SNV(x))
+    return df.loc[criterion]
 
-    # Filter by gene tiers
-    len_before = len(df)
-    df = df[df['Tier'] == 1]
-    print('{} rows with tier 2 genes were removed'.format(len_before - len(df)))
+def drop_noncoding(df):
+    criterion = df['HGVSC'].map(lambda x: is_coding_mut(x))
+    return df.loc[criterion]
 
-    # Filter by primary sites
-    len_before = len(df)
+def preprocess(df):
+    # Keep samples of interested primary sites
+    l = len(df)
     df = df[df['Primary site'].isin(sites_of_interest)]
-    print('{} rows with non-interested primary sites were removed'.format(len_before - len(df)))
+    print('  {} rows with non-interested primary sites are removed'.format(l - len(df)))
+
+    # Remove rows with N/A mutation columns
+    l = len(df)
+    df = df.dropna(how='any', subset=['HGVSC', 'HGVSG'])
+    print('  {} rows with N/A mutation columns are removed'.format(l - len(df)))
+
+    # Currently, only keep the SNVs
+    l = len(df)
+    df = keep_SNVs(df)
+    print('  {} rows which are not SNVs are removed'.format(l - len(df)))
+
+    # Remove rows with non-coding variants
+    l = len(df)
+    df = drop_noncoding(df)
+    print('  {} rows with non-coding variants are removed'.format(l - len(df)))
+
+    # Remove duplicates
+    l = len(df)
+    df = df.drop_duplicates(subset=['ID_sample', 'HGVSC', 'HGVSG'])
+    print('  {} duplicate rows are removed'.format(l - len(df)))
     
     return df
 
-def data_cleansing(df):
-    '''
-    Cleanse the dataset by removing unhelpful rows
-    '''
-    # Remove duplicates
-    len_before = len(df)
-    df = df.drop_duplicates(subset=['ID_sample', 'HGVSC'])
-    print('{} duplicate rows are removed'.format(len_before - len(df)))
+def assign_mut_type(ref, alt, f5, f3):
+    mapping = {
+        'G': 'C',
+        'C': 'G',
+        'A': 'T',
+        'T': 'A'
+    }
+    if ref == 'G' or ref == 'A':
+        return (f5, (mapping[ref], mapping[alt]), f3)
+    else:
+        return (f5, (ref, alt), f3)
 
-    # Remove rows with N/A variant information
-    NaNs = df['HGVSC'].isna()
-    idcs = [idx for idx in range(len(df)) if not NaNs.iloc[idx]]
-    print('{} rows with N/A variant information are removed'.format(len(df) - len(idcs)))
-    df = df.iloc[idcs, :]
-
-    # Remove rows with non-coding variants
-    print('Removing rows with non-coding variants')
-    len_before = len(idcs)
-    idcs = []
-    for idx, hgvsc in enumerate(tqdm(df['HGVSC'])):
-        var = hp.parse_hgvs_variant(hgvsc)
-        if is_hgvs_valid(var):
-            idcs.append(idx)
-    print('{} rows with non-coding variants are removed'.format(len_before - len(idcs)))
-    df = df.iloc[idcs, :]
-
-    return df
-
-def get_summary_info(df):
-    all_sample_ids = list(set(df['ID_sample']))
-    all_genes = list(set(df['Gene name']))
-    return all_sample_ids, all_genes
-
-def make_dataset(df, all_sample_ids, all_genes):
+def make_dataset(df):
     '''
     Make the dataset by constructing the dictionaries
     '''
     loc_of = {} # Location of a column
     for col in cols_of_interest:
         loc_of[col] = df.columns.get_loc(col)
-    cmut_dict = {} # (sample_id, gene) -> [mutations]
-    gmut_dict = {} # (sample_id, chromosome) -> [mutations]
-    primary_site_dict = {} # sample_id -> primary_site
-    for row in df.itertuples(index=False):
+    lookup_table = get_cds_lookup_table()
+
+    sample_ids = set()
+    cmut_dict = defaultdict(list)
+    site_dict = {} # id -> site
+    # gmut_dict = {} # (id, chrom) -> [gmut]
+    before = defaultdict(int)
+    after = defaultdict(int)
+
+    gene_blacklist = set()
+
+    for row in tqdm(df.itertuples(index=False), total=len(df)):
         sample_id = row[loc_of['ID_sample']]
+        
+        before[sample_id] += 1
+
         gene = row[loc_of['Gene name']]
+        if gene in gene_blacklist:
+            continue
+
+        sample_ids.add(sample_id)
+
         cmut = row[loc_of['HGVSC']]
-        gmut = 'chr' + row[loc_of['HGVSG']] # Add a prefix to make the parser work
-        gvar = hp.parse_hgvs_variant(gmut)
-        primary_site = row[loc_of['Primary site']]
-        # Add primary site
-        if sample_id not in primary_site_dict:
-            primary_site_dict[sample_id] = primary_site
-        # Add coding mutations
-        if (sample_id, gene) not in cmut_dict:
-            cmut_dict[(sample_id, gene)] = [cmut]
+        # gmut = row[loc_of['gmut']]
+        site = row[loc_of['Primary site']]
+
+        loc, ref, alt = parse_cmut(cmut)
+        res = get_flanks(gene, loc, ref, lookup_table)
+        if res is not None:
+            f5, f3 = res
+            # Mappings
+            site_dict[sample_id] = site
+            mut_type = assign_mut_type(ref, alt, f5, f3)
+            cmut_dict[sample_id].append(mut_type)        
+            after[sample_id] += 1
         else:
-            cmut_dict[(sample_id, gene)].append(cmut)
-        # Add genomic mutations
-        chrom = parse_chrom(gvar)
-        if (sample_id, chrom) not in gmut_dict:
-            gmut_dict[(sample_id, chrom)] = [gmut]
-        else:
-            gmut_dict[(sample_id, chrom)].append(gmut)
-    dataset = {
-        # Summary info
-        'sample_ids': all_sample_ids,
-        'genes': all_genes,
-        'primary_sites': sites_of_interest,
-        # Sample mappings
+            gene_blacklist.add(gene)
+
+    dataset = { # Sample mappings
+        'sample_ids': list(sample_ids),
         'cmut_dict': cmut_dict,
-        'gmut_dict': gmut_dict,
-        'primary_site_dict': primary_site_dict
+        # TODO: gmut_dict
+        'site_dict': site_dict
     }
+
+    cnt_affected_samples = 0
+    cnt_affected_mutations = 0
+    for sample_id in dataset['sample_ids']:
+        if before[sample_id] > after[sample_id]:
+            cnt_affected_samples += 1
+            cnt_affected_mutations += before[sample_id] - after[sample_id]
+            print('Before: {}, after: {}'.format(before[sample_id], after[sample_id]))
+
+    print('cnt1: {}({}), cnt2: {}({})'.format(cnt_affected_samples, len(dataset['sample_ids']), cnt_affected_mutations, sum(before.values())))
+
     return dataset
 
 def main():
-    # Read in the COSMIC data as dataframe
-    df = pd.read_csv('./data/raw/CosmicMutantExportCensus.tsv', delimiter='\t', encoding='ISO-8859-1')
-    # df = df.sample(n=16384) # FIXME
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--load', help='To load the processed TSV file', action='store_true')
+    load_flag = parser.parse_args().load
+    processed_tsv_filepath = './data/processed/ProcessedGenomeScreensMutantExport.tsv'
 
-    # Filter and cleanse the raw dataframe
-    print('[Data filtering]')
-    df = data_filtering(df)
-    print('[Data cleansing]')
-    df = data_cleansing(df)
+    if not load_flag:
+        # Read in the raw file
+        print('Read in the raw file')
+        raw_tsv_filepath = './data/raw/CosmicGenomeScreensMutantExport.tsv'
+        df = pd.read_csv(raw_tsv_filepath, sep='\t', encoding='ISO-8859-1', usecols=cols_of_interest)
 
-    # Get the summary info
-    print('There are {} primary sites in total'.format(len(sites_of_interest)))
-    all_sample_ids, all_genes = get_summary_info(df)
-    print('There are {} samples in total'.format(len(all_sample_ids)))
-    print('There are {} genes in total'.format(len(all_genes)))
+        # Preprocess the raw file
+        print('Preprocess the raw file')
+        df = preprocess(df)
+
+        # Store the processed file
+        df.to_csv(processed_tsv_filepath, sep="\t", index=False)
+        print('The processed Tab-Separated Values file is stored in {}'.format(processed_tsv_filepath))
+    else:
+        df = pd.read_csv(processed_tsv_filepath, sep="\t")
+        print('Read in the processed file')
 
     # Make the dataset
-    print('[Making the dataset]')
-    dataset = make_dataset(df, all_sample_ids, all_genes)
-    # print(dataset['gmut_dict']) # FIXME
-    filepath = './data/interim/dataset.pkl' # FIXME
-    print('The dataset is stored in {}'.format(filepath))
-    with open(filepath, 'wb') as f:
+    print('Make the dataset')
+    dataset = make_dataset(df) # FIXME
+
+    # Store the dataset
+    dataset_filepath = './data/interim/dataset.pkl'
+    with open(dataset_filepath, 'wb') as f:
         pickle.dump(dataset, f)
+    print('The dataset is stored in {}'.format(dataset_filepath))
 
 if __name__ == '__main__':
     main()

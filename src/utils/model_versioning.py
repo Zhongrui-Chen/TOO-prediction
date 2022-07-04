@@ -9,7 +9,7 @@ def get_name(prefix, id, suffix=''):
 
 class ModelConfig:
     def __init__(self, config_dict):
-        self.model_id = get_time()
+        self.model_id = config_dict['id']
         self.batch_size = config_dict['batch']
         self.lr = config_dict['lr']
         self.num_epochs = config_dict['epochs']
@@ -21,6 +21,7 @@ class ModelConfig:
 class ModelConfigArgumentParser(argparse.ArgumentParser):
     def __init__(self):
         super().__init__()
+        self.add_argument('--id', help='Specify the model id', type=str)
         self.add_argument('--batch', help='The size of a mini-batch', type=int)
         self.add_argument('--lr', help='Learning rate', type=float)
         self.add_argument('--epochs', help='Number of epochs', type=int)
@@ -28,6 +29,7 @@ class ModelConfigArgumentParser(argparse.ArgumentParser):
         self.add_argument('--mps', help='Option to enable M1 GPU support', action='store_true')  
     def get_config(self):
         config_dict = { # The default configuration
+            'id': get_time(),
             'batch': 32,
             'lr': 0.01,
             'epochs': 25,

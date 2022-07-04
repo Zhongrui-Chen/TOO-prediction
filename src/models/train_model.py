@@ -26,7 +26,7 @@ features = np.load(feature_filepath)
 def prepare_dataloaders(batch_size, random_state=42): # FIXME: for reproducible
     y = []
     for sample_id in dataset['sample_ids']:
-        site = dataset['primary_site_dict'][sample_id]
+        site = dataset['site_dict'][sample_id]
         y.append(sites_of_interest.index(site))
     # Split the dataset
     X_train, X_test, y_train, y_test = train_test_split(features, y, test_size=0.2, random_state=random_state)
@@ -46,7 +46,16 @@ def train_model(model, dataloaders, criterion, optimizer, device, num_epochs):
     best_balanced_acc = 0.0
     
     # for epoch in tqdm(range(num_epochs)):
+
+    # Early stopping
+    patience = int(0.2 * num_epochs) + 1
+
     for epoch in range(num_epochs):
+        
+        if patience <= 0:
+            print('[Early stopping]')
+            break
+
         for phase in ['train', 'val']:
             if phase == 'train':
                 model.train()
@@ -82,7 +91,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, num_epochs):
 
             if phase == 'train':
                 epoch_loss = running_loss / len(dataloaders[phase].dataset)
-                print('[Epoch {}/{}] '.format(epoch + 1, num_epochs), end='')
+                print('[Epoch {:3d}/{}] '.format(epoch + 1, num_epochs), end='')
                     # print('-' * 10)
                 print('Training loss: {:.4f}'.format(epoch_loss), end=' | ')
             
@@ -90,22 +99,24 @@ def train_model(model, dataloaders, criterion, optimizer, device, num_epochs):
                 epoch_loss = running_loss / len(dataloaders[phase].dataset)
                 epoch_acc = float(running_corrects) / len(dataloaders[phase].dataset)
                 epoch_balanced_acc = balanced_accuracy_score(running_trues, running_preds)
-                # print('[Epoch {}/{}] '.format(epoch + 1, num_epochs), end='')
+                # print('[Epoch {:2d}/{}] '.format(epoch + 1, num_epochs), end='')
                     # print('-' * 10)
                 print('Val loss: {:.4f} Acc: {:.4f} Balanced Acc: {:.4f}'.format(epoch_loss, epoch_acc, epoch_balanced_acc), end='')
                 # print('Loss: {:.4f} Acc: {:.4f} Balanced Acc: {:.4f}'.format(epoch_loss, epoch_acc, epoch_balanced_acc), end='')
-                # if epoch_balanced_acc > best_acc:
-                if epoch_acc > best_acc:
-                    # best_balanced_acc = epoch_balanced_acc
-                    best_acc = epoch_acc
+                if epoch_balanced_acc > best_balanced_acc:
+                    best_balanced_acc = epoch_balanced_acc
+                    # best_acc = epoch_acc
                     best_model_wts = copy.deepcopy(model.state_dict())
                     print(' [updated]', end='')
+                    patience = int(0.2 * num_epochs) + 1
+                else:
+                    patience -= 1
                 print()
             
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-    # print('Best balanced Acc: {:4f}'.format(best_acc))
-    print('Best Acc: {:4f}'.format(best_acc))
+    print('Best balanced Acc: {:4f}'.format(best_balanced_acc))
+    # print('Best Acc: {:4f}'.format(best_acc))
 
     model.load_state_dict(best_model_wts)
     # return model, val_acc_history

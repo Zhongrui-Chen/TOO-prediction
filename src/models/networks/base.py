@@ -8,7 +8,7 @@ class BaseNet(nn.Module):
         self.fc1 = nn.Linear(in_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, out_size)
-        self.droput = nn.Dropout(0.2)
+        self.droput = nn.Dropout(0.1)
         
     def forward(self, x):
         x = self.flatten(x)
