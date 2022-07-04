@@ -23,6 +23,18 @@ def reverse_complement(nuc):
     elif nuc == 'C':
         return 'T'
 
+def assign_mut_type(ref, alt, f5, f3):
+    mapping = {
+        'G': 'C',
+        'C': 'G',
+        'A': 'T',
+        'T': 'A'
+    }
+    if ref == 'G' or ref == 'A':
+        return (f5, (mapping[ref], mapping[alt]), f3)
+    else:
+        return (f5, (ref, alt), f3)
+
 def seq_between(seq, start, end):
     # Included, e.g., ('ATGCA', 2, 4) => 'TGC'
     return seq[start-1 : end]

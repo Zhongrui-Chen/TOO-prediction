@@ -48,7 +48,7 @@ def train_model(model, dataloaders, criterion, optimizer, device, num_epochs):
     # for epoch in tqdm(range(num_epochs)):
 
     # Early stopping
-    patience = int(0.2 * num_epochs) + 1
+    patience = int(0.10 * num_epochs) + 1
 
     for epoch in range(num_epochs):
         
