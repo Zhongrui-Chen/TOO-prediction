@@ -1,6 +1,7 @@
 # TODO: Add header comments
 
 from collections import defaultdict
+from random import sample
 import numpy as np
 import pickle
 from tqdm import tqdm
@@ -16,8 +17,9 @@ from itertools import product
 
 sub_types = [('C', x) for x in 'AGT'] + [('T', x) for x in 'ACG']
 mut_types = [x for x in product('<ACGT', sub_types, 'ACGT>')]
-with open('./data/processed/curated_genes.pkl', 'rb') as f:
-    curated_genes = pickle.load(f)
+with open('./data/processed/census_genes.pkl', 'rb') as f:
+# with open('./data/processed/curated_genes.pkl', 'rb') as f:
+    gene_list = pickle.load(f)
 
 class UnknownMutTypeException(Exception):
     pass
@@ -198,38 +200,44 @@ class UnknownMutTypeException(Exception):
 #         norm_factor = 1
 #     return (pattern_vec / norm_factor).reshape((1, -1))
 
-def get_cmut_distro_vector(sample_id, dataset):
-    # edge_count = 0
-    mut_gene_dict = dict.fromkeys(curated_genes, 0)
-    mut_distro_dict = dict.fromkeys(mut_types, 0)
+def get_cmut_vector(sample_id, dataset):
+    # mut_gene_dict = dict.fromkeys(gene_list, 0)
+    # mut_distro_dict = dict.fromkeys(mut_types, 0)
 
     # print(len(mut_freq_dict))
 
-    for gene, mut_type in dataset['cmut_dict'][sample_id]:
-        if gene in curated_genes:
-            mut_gene_dict[gene] = 1
-        mut_distro_dict[mut_type] += 1
+    mut_gene_vec = np.zeros(len(gene_list))
+    mut_type_vec = np.zeros(len(mut_types))
 
-    mut_gene_vec = np.array(list(mut_gene_dict.values()))
-    mut_distro_vec = np.array(list(mut_distro_dict.values()), dtype=np.float32)
-    mut_distro_vec /= np.sum(mut_distro_vec) if np.sum(mut_distro_vec) > 0 else 1
-    mut_vec = np.concatenate((mut_distro_vec, mut_gene_vec))
-    mut_vec = mut_gene_vec
+    for gene, mut_type in dataset['cmut_dict'][sample_id]:
+        mut_type_idx = mut_types.index(mut_type)
+        mut_type_vec[mut_type_idx] += 1
+        if gene in gene_list:
+            gene_idx = gene_list.index(gene)
+            mut_gene_vec[gene_idx] = 1
+    
+    mut_type_vec /= np.sum(mut_type_vec) if np.sum(mut_type_vec) > 0 else 1
+    mut_vec = np.concatenate((mut_type_vec, mut_gene_vec))
 
     return mut_vec.reshape(1, -1)
 
 def get_cnv_vector(sample_id, dataset):
-    # cnv_gain_dict = dict.fromkeys(curated_genes, 0)
-    # cnv_loss_dict = dict.fromkeys(curated_genes, 0)
-    cnv_vec = np.zeros(len(curated_genes) * 2)
+    cnv_vec = np.zeros(len(gene_list) * 2)
 
     for gene, mut_type in dataset['cnv_dict'][sample_id]:
-        if gene in curated_genes:
-            gene_idx = curated_genes.index(gene)
-            cnv_vec[gene_idx + 0 if mut_type == 'gain' else 1] = 1
+        if gene in gene_list:
+            gene_idx = gene_list.index(gene)
+            cnv_vec[1 + gene_idx + 0 if mut_type == 'gain' else 1] = 1
     
     return cnv_vec.reshape(1, -1)
 
+# def get_ge_vector(sample_id, dataset):
+#     ge_vec = np.zeros(len(gene_list))
+#     for gene, z_score in dataset['ge_dict'][sample_id]:
+#         if gene in gene_list:
+#             gene_idx = gene_list.index(gene)
+#             ge_vec[gene_idx] = z_score
+#     return ge_vec.reshape(1, -1)py
 
 def get_feature_matrix(dataset):
     feat_matrix = []
@@ -239,8 +247,9 @@ def get_feature_matrix(dataset):
     # test_sample_ids = [dataset['sample_ids'][idx] for idx in test_idcs]
     # for sample_id in tqdm(test_sample_ids):
         # distro_vec  = get_gmut_distribution_vector(sample_id, bin_counts)
-        cmut_distro_vec = get_cmut_distro_vector(sample_id, dataset)
+        cmut_distro_vec = get_cmut_vector(sample_id, dataset)
         cnv_vec = get_cnv_vector(sample_id, dataset)
+        # ge_vec = get_ge_vector(sample_id, dataset)
         feat_vec = np.concatenate((cmut_distro_vec, cnv_vec), axis=1)
         feat_matrix.append(feat_vec)
     feat_matrix = np.concatenate(feat_matrix, axis=0, dtype=np.float32)

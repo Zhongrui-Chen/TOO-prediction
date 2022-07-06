@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from src.data.make_dataset import sites_of_interest
-from src.models.networks.base import BaseNet
+from src.models.networks.base_fs import BaseNet
 from src.utils.model_versioning import ModelConfigArgumentParser
 import torch.optim as optim
 # from tqdm import tqdm
@@ -103,9 +103,10 @@ def train_model(model, dataloaders, criterion, optimizer, device, num_epochs):
                     # print('-' * 10)
                 print('Val loss: {:.4f} Acc: {:.4f} Balanced Acc: {:.4f}'.format(epoch_loss, epoch_acc, epoch_balanced_acc), end='')
                 # print('Loss: {:.4f} Acc: {:.4f} Balanced Acc: {:.4f}'.format(epoch_loss, epoch_acc, epoch_balanced_acc), end='')
-                if epoch_balanced_acc > best_balanced_acc:
-                    best_balanced_acc = epoch_balanced_acc
-                    # best_acc = epoch_acc
+                # if epoch_balanced_acc > best_balanced_acc:
+                if epoch_acc > best_acc:
+                    # best_balanced_acc = epoch_balanced_acc
+                    best_acc = epoch_acc
                     best_model_wts = copy.deepcopy(model.state_dict())
                     print(' [updated]', end='')
                     patience = int(0.2 * num_epochs) + 1
@@ -115,8 +116,8 @@ def train_model(model, dataloaders, criterion, optimizer, device, num_epochs):
             
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-    print('Best balanced Acc: {:4f}'.format(best_balanced_acc))
-    # print('Best Acc: {:4f}'.format(best_acc))
+    # print('Best balanced Acc: {:4f}'.format(best_balanced_acc))
+    print('Best Acc: {:4f}'.format(best_acc))
 
     model.load_state_dict(best_model_wts)
     # return model, val_acc_history
@@ -139,7 +140,8 @@ def main():
     print('Initializing the model with in_size={}, hidden_size={}, out_size={}'.format(in_size, model_config.hidden_size, out_size))
     model = BaseNet(in_size, model_config.hidden_size, out_size)
     model.to(device)
-    optimizer = optim.SGD(model.parameters(), lr=model_config.lr, momentum=0.9)
+    # optimizer = optim.SGD(model.parameters(), lr=model_config.lr, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=model_config.lr)
     criterion = nn.CrossEntropyLoss()
 
     # Prepare the training & testing data

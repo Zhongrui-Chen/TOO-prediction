@@ -4,7 +4,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix, accuracy_score, balanced_accuracy_score, classification_report, precision_recall_fscore_support
-from src.models.networks.base import BaseNet
+from src.models.networks.base_fs import BaseNet
 from src.utils.model_versioning import ModelConfigArgumentParser
 from src.data.make_dataset import sites_of_interest
 
