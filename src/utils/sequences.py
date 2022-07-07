@@ -6,8 +6,7 @@ class RefNotFoundError(Exception):
 class InvalidMutError(Exception):
     pass
 
-cds_fasta_filepath = './data/external/All_COSMIC_Genes.fasta'
-def get_cds_lookup_table():
+def get_cds_lookup_table(cds_fasta_filepath):
     return pysam.FastaFile(cds_fasta_filepath)
 
 def nuc_at(seq, loc):
@@ -49,23 +48,24 @@ def get_sequence(gene, lookup_table):
     ref = get_reference(gene, lookup_table)
     return lookup_table.fetch(ref).upper()
 
-def get_flanks(gene, loc, ref, lookup_table):
+def is_matched_seq(gene, pos, ref, lookup_table):
     seq = get_sequence(gene, lookup_table)
-    # Sanity check
-    # if loc > len(seq):
-    #     raise InvalidMutError('Loc out of range: loc={}, seqlen={}'.format(loc, len(seq)))
-    # elif ref != nuc_at(seq, loc):
-    #     raise InvalidMutError('Ref not matched: ref={}, seq[loc]={}'.format(ref, nuc_at(seq, loc)))
-    if loc > len(seq) or ref != nuc_at(seq, loc):
-        return None
-    if loc > 1:
-        f5 = nuc_at(seq, loc-1)
+    pos = int(pos)
+    if pos > len(seq) or ref != nuc_at(seq, pos):
+        return False
+    return True
+
+def get_flanks(gene, pos, lookup_table):
+    pos = int(pos)
+    seq = get_sequence(gene, lookup_table)
+    if pos > 1:
+        f5 = nuc_at(seq, pos-1)
     else:
-        f5 = '<'
-    if loc < len(seq):
-        f3 = nuc_at(seq, loc+1)
+        f5 = '['
+    if pos < len(seq):
+        f3 = nuc_at(seq, pos+1)
     else:
-        f3 = '>'
+        f3 = ']'
     return f5, f3
 
 # def get_references_by_gene(gene, lookup_table):
