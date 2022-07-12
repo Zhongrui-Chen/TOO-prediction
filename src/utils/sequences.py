@@ -6,11 +6,23 @@ class RefNotFoundError(Exception):
 class InvalidMutError(Exception):
     pass
 
-def get_cds_lookup_table(cds_fasta_filepath):
-    return pysam.FastaFile(cds_fasta_filepath)
+def get_fasta_lookup_table(fasta_filepath):
+    return pysam.FastaFile(fasta_filepath)
 
-def nuc_at(seq, loc):
-    return seq[loc-1]
+def get_genomic_sequences(fasta_filepath):
+    tb = get_fasta_lookup_table(fasta_filepath)
+    chrom_refs = [ac for ac in tb.references if 'NC' in ac]
+    gseqs = {}
+    for chrom_idx in range(1, 25):
+        chrom = str(chrom_idx)
+        chrom_ref = chrom_refs[chrom_idx - 1]
+        if chrom_idx > 22:
+            chrom = 'X' if chrom_idx == 23 else 'Y'
+        gseqs[chrom] = tb.fetch(chrom_ref).upper()
+    return gseqs
+
+def nuc_at(seq, pos):
+    return seq[int(pos) - 1]
 
 def reverse_complement(nuc):
     if nuc == 'A':
@@ -48,16 +60,15 @@ def get_sequence(gene, lookup_table):
     ref = get_reference(gene, lookup_table)
     return lookup_table.fetch(ref).upper()
 
-def is_matched_seq(gene, pos, ref, lookup_table):
-    seq = get_sequence(gene, lookup_table)
+# def sanity_check(gene, pos, ref):
+def sanity_check(pos, ref, seq):
     pos = int(pos)
     if pos > len(seq) or ref != nuc_at(seq, pos):
         return False
     return True
 
-def get_flanks(gene, pos, lookup_table):
+def get_flanks(pos, seq):
     pos = int(pos)
-    seq = get_sequence(gene, lookup_table)
     if pos > 1:
         f5 = nuc_at(seq, pos-1)
     else:

@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.metrics import confusion_matrix, accuracy_score, balanced_accuracy_score, classification_report, precision_recall_fscore_support
 from src.models.networks.base_fs import BaseNet
 from src.utils.model_versioning import ModelConfigArgumentParser
-from src.data.make_dataset import sites_of_interest
+from src.data.preprocess import sites_of_interest
 
 def get_site_label(idx):
     return sites_of_interest[idx]

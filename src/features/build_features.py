@@ -1,84 +1,82 @@
 # TODO: Add header comments
 
+from ast import literal_eval
 from collections import defaultdict
-from random import sample
 import numpy as np
 import pickle
 from tqdm import tqdm
 from itertools import product
-# from src.utils.hgvs_parsing import parse_cmut
-# from src.utils.sequences import get_cds_lookup_table, reverse_complement, get_reference_by_gene_and_accession_number, seq_between, nuc_at
-# from src.utils.sequences import get_cds_lookup_table, get_flanks
-# from collections import defaultdict
+from src.utils.hgvs_parsing import is_range
+from src.utils.sequences import assign_mut_type
 
-# bin_length = 1000000 # 10 million
-# num_of_chromosome = 22
-# vocab = [''.join(p) for p in itertools.product('ATGC', repeat=3)]
+bin_length = 1000000 # 1 million
+num_of_chromosomes = 22
 
 sub_types = [('C', x) for x in 'AGT'] + [('T', x) for x in 'ACG']
-mut_types = [x for x in product('<ACGT', sub_types, 'ACGT>')]
+context_types = [x for x in product('[ACGT', sub_types, 'ACGT]')]
 with open('./data/processed/census_genes.pkl', 'rb') as f:
 # with open('./data/processed/curated_genes.pkl', 'rb') as f:
     gene_list = pickle.load(f)
 
-class UnknownMutTypeException(Exception):
-    pass
+# class UnknownMutTypeException(Exception):
+#     pass
 
-# def calculate_bin_counts():
+# def calculate_bin_counts(dataset):
 #     '''
 #     Calculate how many bins should be allocated for each chromosome
 #     '''
-#     print('[Calculating the bins for mutation distribution]')
-#     bin_counts = {}
-#     for (_, chrom), gmuts in dataset['gmut_dict'].items():
-#         for mut in gmuts:
-#             # var = hp.parse_hgvs_variant(mut)
-#             # pos = var.posedit.pos
-#             seg = mut.split('.')[1]
-#             pos = ''
-#             for ch in seg:
-#                 if not ch.isalpha():
-#                     pos += ch
-#                 else:
-#                     break
-#             if is_range(pos):
-#                 # pos = pos.start
-#                 pos = pos.split('_')[0]
-#             bin_idx = int(int(str(pos)) / bin_length)
-#             if chrom in bin_counts:
-#                 if bin_idx > bin_counts[chrom]:
-#                     bin_counts[chrom] = bin_idx
-#             else:
-#                 bin_counts[chrom] = bin_idx
-#     bin_counts_list = np.zeros(num_of_chromosome, dtype=int)
-#     for chrom in range(1, num_of_chromosome + 1):
-#         chrom_str = str(chrom)
+#     print('Calculating the bins for mutation distribution')
+#     bin_counts = defaultdict(int)
+#     for _, chrom, gpos in dataset['gmut_dict'].items():
+#         if is_range(gpos):
+#             gpos = gpos.split('_')[0]
+#         bin_idx = int(int(gpos) / bin_length)
+#         bin_counts[chrom] = max(bin_idx, bin_counts[chrom])
+#         # if chrom in bin_counts:
+#         #     if bin_idx > bin_counts[chrom]:
+#         #         bin_counts[chrom] = bin_idx
+#         # else:
+#         #     bin_counts[chrom] = bin_idx
+#     bin_counts_list = np.zeros(num_of_chromosomes, dtype=int)
+#     for chrom_idx in range(1, num_of_chromosomes + 1):
+#         chrom_str = str(chrom_idx)
 #         bin_counts_list[chrom - 1] = bin_counts[chrom_str]
 #     return bin_counts_list
 
-# def get_gmut_distribution_vector(sample_id, bin_counts):
-#     bin_counts_cumsum = np.cumsum(bin_counts)
-#     distro_vec = np.zeros(np.sum(bin_counts))
-#     for chrom in range(1, num_of_chromosome + 1):
-#         chrom_str = str(chrom)
-#         if (sample_id, chrom_str) in dataset['gmut_dict']:
-#             for mut in dataset['gmut_dict'][(sample_id, chrom_str)]:
-#                 # var = hp.parse_hgvs_variant(mut)
-#                 # pos = var.posedit.pos
-#                 seg = mut.split('.')[1]
-#                 pos = ''
-#                 for ch in seg:
-#                     if not ch.isalpha():
-#                         pos += ch
-#                     else:
-#                         break
-#                 if is_range(pos):
-#                     # pos = pos.start
-#                     pos = pos.split('_')[0]
-#                 bin_idx = int(int(str(pos)) / bin_length)
-#                 distro_vec[bin_counts_cumsum[chrom - 2] if chrom > 1 else 0 + bin_idx] += 1
-#     norm_factor = np.sum(distro_vec) if np.sum(distro_vec) > 0 else 1
-#     return (distro_vec / norm_factor).reshape((1, -1))
+def get_gmut_vector(sample_id, dataset):
+    # bin_counts_cumsum = np.cumsum(bin_counts)
+    # gmut_snv_vec = np.zeros(np.sum(bin_counts))
+    # gmut_indel_vec = np.zeros(np.sum(bin_counts))
+    for mut_type, chrom, gpos in dataset['gmut_dict'][sample_id]:
+        if is_range(gpos):
+            gpos = gpos.split('_')[0]
+        bin_idx = int(int(gpos) / bin_length)
+        chrom_idx = int(chrom)
+        cumsum_idx = bin_counts_cumsum[chrom_idx - 2] if chrom_idx > 1 else 0 + bin_idx
+        if mut_type == 'SNV':
+            gmut_snv_vec[cumsum_idx] += 1
+        # elif mut_type == 'INDEL':
+            # gmut_indel_vec[cumsum_idx] += 1
+    # for chrom_idx in range(1, num_of_chromosomes + 1):
+    #     chrom = str(chrom_idx)
+    #     if (sample_id, chrom) in dataset['gmut_dict']:
+    #         for mut in dataset['gmut_dict'][(sample_id, chrom_str)]:
+    #             # var = hp.parse_hgvs_variant(mut)
+    #             # pos = var.posedit.pos
+    #             seg = mut.split('.')[1]
+    #             pos = ''
+    #             for ch in seg:
+    #                 if not ch.isalpha():
+    #                     pos += ch
+    #                 else:
+    #                     break
+    #             if is_range(pos):
+    #                 # pos = pos.start
+    #                 pos = pos.split('_')[0]
+    #             bin_idx = int(int(str(pos)) / bin_length)
+    #             distro_vec[bin_counts_cumsum[chrom - 2] if chrom > 1 else 0 + bin_idx] += 1
+    gmut_snv_vec /= sum(gmut_snv_vec) if sum(gmut_snv_vec) > 0 else 1
+    return gmut_snv_vec.reshape((1, -1))
 
 # def parse_patterns_of_var(var, padded_seq, margin):
 #     mut_type = parse_mut_type(var)
@@ -200,57 +198,42 @@ class UnknownMutTypeException(Exception):
 #         norm_factor = 1
 #     return (pattern_vec / norm_factor).reshape((1, -1))
 
-def get_cmut_vector(sample_id, dataset):
-    # mut_gene_dict = dict.fromkeys(gene_list, 0)
-    # mut_distro_dict = dict.fromkeys(mut_types, 0)
+def get_snv_vector(sample_id, dataset):
+    # mut_gene_vec = np.zeros(len(gene_list))
+    context_type_vec = np.zeros(len(context_types))
 
-    # print(len(mut_freq_dict))
-
-    mut_gene_vec = np.zeros(len(gene_list))
-    mut_type_vec = np.zeros(len(mut_types))
-
-    for gene, mut_type in dataset['cmut_dict'][sample_id]:
-        mut_type_idx = mut_types.index(mut_type)
-        mut_type_vec[mut_type_idx] += 1
-        if gene in gene_list:
-            gene_idx = gene_list.index(gene)
-            mut_gene_vec[gene_idx] = 1
+    for f5, (ref, alt), f3 in dataset['snv_dict'][sample_id]:
+        context_type = assign_mut_type(ref, alt, f5, f3)
+        mut_type_idx = context_types.index(context_type)
+        context_type_vec[mut_type_idx] += 1
+        # if gene in gene_list:
+        #     gene_idx = gene_list.index(gene)
+        #     mut_gene_vec[gene_idx] = 1
     
-    mut_type_vec /= np.sum(mut_type_vec) if np.sum(mut_type_vec) > 0 else 1
-    mut_vec = np.concatenate((mut_type_vec, mut_gene_vec))
+    context_type_vec /= np.sum(context_type_vec) if np.sum(context_type_vec) > 0 else 1
+    # mut_vec = np.concatenate((context_type_vec, mut_gene_vec))
 
-    return mut_vec.reshape(1, -1)
+    return context_type_vec.reshape(1, -1)
 
 def get_cnv_vector(sample_id, dataset):
     cnv_vec = np.zeros(len(gene_list) * 2)
 
-    for gene, mut_type in dataset['cnv_dict'][sample_id]:
+    for gene, total_cn, mut_type in dataset['cnv_dict'][sample_id]:
         if gene in gene_list:
             gene_idx = gene_list.index(gene)
-            cnv_vec[1 + gene_idx + 0 if mut_type == 'gain' else 1] = 1
+            cnv_vec[1 + gene_idx + 0 if mut_type == 'gain' else 1] = total_cn
     
     return cnv_vec.reshape(1, -1)
-
-# def get_ge_vector(sample_id, dataset):
-#     ge_vec = np.zeros(len(gene_list))
-#     for gene, z_score in dataset['ge_dict'][sample_id]:
-#         if gene in gene_list:
-#             gene_idx = gene_list.index(gene)
-#             ge_vec[gene_idx] = z_score
-#     return ge_vec.reshape(1, -1)py
 
 def get_feature_matrix(dataset):
     feat_matrix = []
     # bin_counts = calculate_bin_counts()
+    # for sample_id in tqdm(dataset['sample_ids']):
     for sample_id in tqdm(dataset['sample_ids']):
-    # test_idcs = np.random.randint(0, len(dataset['sample_ids']), 5)
-    # test_sample_ids = [dataset['sample_ids'][idx] for idx in test_idcs]
-    # for sample_id in tqdm(test_sample_ids):
-        # distro_vec  = get_gmut_distribution_vector(sample_id, bin_counts)
-        cmut_distro_vec = get_cmut_vector(sample_id, dataset)
-        cnv_vec = get_cnv_vector(sample_id, dataset)
-        # ge_vec = get_ge_vector(sample_id, dataset)
-        feat_vec = np.concatenate((cmut_distro_vec, cnv_vec), axis=1)
+        snv_vec = get_snv_vector(sample_id, dataset)
+        # cnv_vec  = get_cnv_vector(sample_id, dataset)
+        # feat_vec = np.concatenate([cmut_vec, cnv_vec], axis=1)
+        feat_vec = snv_vec
         feat_matrix.append(feat_vec)
     feat_matrix = np.concatenate(feat_matrix, axis=0, dtype=np.float32)
     print('Non-zero count:', np.count_nonzero(feat_matrix)) # FIXME
@@ -261,7 +244,6 @@ def main():
     # Load the dataset
     with open('./data/interim/dataset.pkl', 'rb') as f: # FIXME
         dataset = pickle.load(f)
-    # Test FIXME only use a portion of data
     # Generate a feature vector for each sample to constrcut the feature matrix
     print('Building the feature matrix')
     fmatrix = get_feature_matrix(dataset)

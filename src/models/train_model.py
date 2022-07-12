@@ -8,14 +8,14 @@ from sklearn.metrics import balanced_accuracy_score
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.data.make_dataset import sites_of_interest
+from src.data.preprocess import sites_of_interest
 from src.models.networks.base_fs import BaseNet
 from src.utils.model_versioning import ModelConfigArgumentParser
 import torch.optim as optim
 # from tqdm import tqdm
 
 # Load the dataset dict
-with open('./data/interim/dataset.pkl', 'rb') as f: # FIXME
+with open('./data/interim/dataset.pkl', 'rb') as f:
     dataset = pickle.load(f)
 
 # Load the feature matrix
