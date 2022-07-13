@@ -1,11 +1,12 @@
 from collections import defaultdict
-from math import inf
+from math import floor, ceil, inf
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 import argparse
 # import hgvs.parser
 from src.utils.hgvs_parsing import is_coding_mut, parse_hgvs, parse_snv_edit
-from src.utils.sequences import get_flanks, get_genomic_sequences, nuc_at, sanity_check
+from src.utils.sequences import get_chrom_by_idx, get_chrom_idx_by_chrom, get_flanks, get_genomic_sequences, nuc_at, sanity_check
 
 # Define the interested columns and primary sites
 # cols_mut = ['Gene name', 'ID_sample', 'Primary site', 'Mutation Description', 'Mutation AA', 'HGVSC', 'HGVSG']
@@ -13,8 +14,8 @@ cols_mut = ['Gene name', 'ID_sample', 'Primary site', 'Mutation Description', 'H
 # cols_mut_rename_mapper = {'Gene name': 'gene', 'ID_sample': 'sample_id', 'MUTATION_ID': 'mut_id', 'Primary site': 'site', 'Mutation Description': 'mut_effect', 'Mutation AA': 'pmut', 'HGVSC': 'cmut', 'HGVSG': 'gmut'}
 # cols_mut_rename_mapper = {'Gene name': 'gene', 'ID_sample': 'sample_id', 'MUTATION_ID': 'mut_id', 'Primary site': 'site', 'Mutation Description': 'mut_effect', 'HGVSC': 'cmut', 'HGVSG': 'gmut'}
 cols_mut_rename_mapper = {'Gene name': 'gene', 'ID_sample': 'sample_id', 'Primary site': 'site', 'Mutation Description': 'mut_effect', 'HGVSC': 'hgvsc', 'HGVSG': 'hgvsg'}
-# cols_cnv = ['gene_name', 'ID_SAMPLE', 'TOTAL_CN', 'MUT_TYPE', 'Chromosome:G_Start..G_Stop']
-# cols_cnv_rename_mapper = {'gene_name': 'gene', 'ID_SAMPLE': 'sample_id', 'TOTAL_CN': 'total_cn', 'MUT_TYPE': 'cnv_mut_type', 'Chromosome:G_Start..G_Stop': 'chrom_range'}
+cols_cnv = ['gene_name', 'ID_SAMPLE', 'TOTAL_CN', 'MUT_TYPE', 'Chromosome:G_Start..G_Stop']
+cols_cnv_rename_mapper = {'gene_name': 'gene', 'ID_SAMPLE': 'sample_id', 'TOTAL_CN': 'total_cn', 'MUT_TYPE': 'cnv_mut_type', 'Chromosome:G_Start..G_Stop': 'chrom_range'}
 # cols_ge = ['SAMPLE_ID', 'GENE_NAME', 'Z_SCORE']
 # cols_ge_rename_mapper = {'SAMPLE_ID': 'sample_id', 'GENE_NAME': 'gene', 'Z_SCORE': 'z_score'}
 # sites_of_interest = [
@@ -64,6 +65,15 @@ def preprocess_mut(df_mut: pd.DataFrame) -> pd.DataFrame:
 
     # Get the genomic sequences
     genomic_seqs = get_genomic_sequences(genomic_fasta_filepath)
+    # Calculate the numbers of bins in each chromosome
+    num_bins = np.zeros(24, dtype=int)
+    bin_len = 1000000
+    for chrom_idx in range(1, 25): # From Chromosome 1 to Chromosome X and Y
+        chrom = get_chrom_by_idx(chrom_idx)
+        num_bins[chrom_idx-1] = ceil(len(genomic_seqs[chrom]) / bin_len)
+    print(np.cumsum(num_bins))
+    
+    # The processed results
     snv_dict = defaultdict(list)
     gws_sample_ids = set() # Sample IDs that went through genome-wide sequencing
     # Statistical evaluation
@@ -85,6 +95,9 @@ def preprocess_mut(df_mut: pd.DataFrame) -> pd.DataFrame:
         if mut_type == 'SNV':
             num_snvs[row.sample_id] += 1
             ref, alt = parse_snv_edit(edit)
+            # Get the bin index
+            chrom_idx = get_chrom_idx_by_chrom(chrom)
+            genomic_bin_idx = floor(int(pos) / bin_len) + np.cumsum(num_bins)[chrom_idx-2] if chrom_idx > 1 else 0
             seq = genomic_seqs[chrom]
             # Perform a sanity check
             if sanity_check(pos, ref, seq):
@@ -95,6 +108,7 @@ def preprocess_mut(df_mut: pd.DataFrame) -> pd.DataFrame:
                 snv_dict['site'].append(row.site)
                 snv_dict['chrom'].append(chrom)
                 snv_dict['pos'].append(pos)
+                snv_dict['bin'].append(genomic_bin_idx)
                 snv_dict['f5'].append(f5)
                 snv_dict['ref'].append(ref)
                 snv_dict['alt'].append(alt)
@@ -129,13 +143,13 @@ def preprocess_mut(df_mut: pd.DataFrame) -> pd.DataFrame:
     df_mut_processed = pd.DataFrame.from_dict(final_snv_dict)
     return df_mut_processed
 
-# def preprocess_cnv(df_mut, df_cnv):
-#     df_cnv = df_cnv.rename(cols_cnv_rename_mapper, axis=1)
-#     l = len(df_cnv)
-#     criterion = df_cnv['sample_id'].map(lambda x: x in df_mut['sample_id'])
-#     df_cnv = df_cnv.loc[criterion]
-#     print('{} rows in the CNV file are remained out of {}'.format(len(df_cnv), l))
-#     return df_cnv
+def preprocess_cnv(df_mut, df_cnv):
+    df_cnv = df_cnv.rename(cols_cnv_rename_mapper, axis=1)
+    l = len(df_cnv)
+    criterion = df_cnv['sample_id'].map(lambda x: x in df_mut['sample_id'])
+    df_cnv = df_cnv.loc[criterion]
+    print('{} rows in the CNV file are remained out of {}'.format(len(df_cnv), l))
+    return df_cnv
 
 def revise_gene(gene):
     if '_' in gene:
@@ -159,7 +173,7 @@ def main():
     print('Preprocess the mutation file')
     df_mut_processed = preprocess_mut(df_mut)
 
-    print(df_mut_processed.head())
+    print(df_mut_processed.sample(n=10))
 
     # Store the processed mut file
     if not n_testrows:

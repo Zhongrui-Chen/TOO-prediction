@@ -9,15 +9,27 @@ class InvalidMutError(Exception):
 def get_fasta_lookup_table(fasta_filepath):
     return pysam.FastaFile(fasta_filepath)
 
+def get_chrom_idx_by_chrom(chrom):
+    if chrom in ['X', 'Y']:
+        chrom_idx= 23 if chrom == 'X' else 24
+    else:
+        chrom_idx = int(chrom)
+    return chrom_idx
+
+def get_chrom_by_idx(chrom_idx):
+    if chrom_idx > 22:
+        chrom = 'X' if chrom_idx == 23 else 'Y'
+    else:
+        chrom = str(chrom_idx)
+    return chrom
+
 def get_genomic_sequences(fasta_filepath):
     tb = get_fasta_lookup_table(fasta_filepath)
     chrom_refs = [ac for ac in tb.references if 'NC' in ac]
     gseqs = {}
     for chrom_idx in range(1, 25):
-        chrom = str(chrom_idx)
         chrom_ref = chrom_refs[chrom_idx - 1]
-        if chrom_idx > 22:
-            chrom = 'X' if chrom_idx == 23 else 'Y'
+        chrom = get_chrom_by_idx(chrom_idx)
         gseqs[chrom] = tb.fetch(chrom_ref).upper()
     return gseqs
 
@@ -69,14 +81,16 @@ def sanity_check(pos, ref, seq):
 
 def get_flanks(pos, seq):
     pos = int(pos)
-    if pos > 1:
-        f5 = nuc_at(seq, pos-1)
-    else:
-        f5 = '['
-    if pos < len(seq):
-        f3 = nuc_at(seq, pos+1)
-    else:
-        f3 = ']'
+    # if pos > 1:
+    #     f5 = nuc_at(seq, pos-1)
+    # else:
+    #     f5 = '['
+    # if pos < len(seq):
+    #     f3 = nuc_at(seq, pos+1)
+    # else:
+    #     f3 = ']'
+    f5 = nuc_at(seq, pos-1)
+    f3 = nuc_at(seq, pos+1)
     return f5, f3
 
 # def get_references_by_gene(gene, lookup_table):

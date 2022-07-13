@@ -24,13 +24,21 @@ def make_dataset(df_mut): # FIXME
     sample_ids = set()
     # cmut_dict = defaultdict(list) # sample_id -> [(coding, mut_type, gene, cmut)]
     # gmut_dict = defaultdict(list) # sample_id -> [(mut_type, chrom, gpos)]
+    # snv_gene_dict = defaultdict(set)
+    # snv_context_type_dict = defaultdict(list)
+    # snv_distribution_dict = defaultdict(list)
     snv_dict = defaultdict(list)
     site_dict = defaultdict(list) # sample_id -> site
 
     for row in tqdm(df_mut.itertuples(index=False), total=len(df_mut)):
         sample_ids.add(row.sample_id)
         site_dict[row.sample_id] = row.site
-        snv_dict[row.sample_id].append((row.f5, (row.ref, row.alt), row.f3))
+        # snv_gene_dict[row.sample_id].add(row.gene)
+        # snv_distribution_dict[row.sample_id].append(row.bin)
+        # snv_context_type_dict[row.sample_id].append((row.f5, (row.ref, row.alt), row.f3))
+        snv_dict[row.sample_id].append(
+            (row.gene, row.bin, row.f5, row.ref, row.alt, row.f3)
+        )
     
     # cnv_dict = defaultdict(list) # sample_id -> [(gene, total_cn, mut_type (loss or gain))]
     # for row in tqdm(df_cnv.itertuples(index=False), total=len(df_cnv)):
@@ -38,6 +46,9 @@ def make_dataset(df_mut): # FIXME
 
     dataset = { # Sample mappings
         'sample_ids': list(sample_ids),
+        # 'snv_gene_dict': snv_gene_dict,
+        # 'snv_distribution_dict': snv_distribution_dict,
+        # 'snv_context_type_dict': snv_context_type_dict,
         'snv_dict': snv_dict,
         'site_dict': site_dict
     }
