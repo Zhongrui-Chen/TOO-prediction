@@ -12,9 +12,8 @@ from collections import defaultdict
 from tqdm import tqdm
 import pandas as pd
 import argparse
-from ast import literal_eval
 
-def make_dataset(df_mut): # FIXME
+def make_dataset(df_mut, df_cnv):
     '''
     Make the dataset by constructing the data dictionary
     '''
@@ -28,6 +27,7 @@ def make_dataset(df_mut): # FIXME
     # snv_context_type_dict = defaultdict(list)
     # snv_distribution_dict = defaultdict(list)
     snv_dict = defaultdict(list)
+    cnv_dict = defaultdict(list)
     site_dict = defaultdict(list) # sample_id -> site
 
     for row in tqdm(df_mut.itertuples(index=False), total=len(df_mut)):
@@ -40,6 +40,9 @@ def make_dataset(df_mut): # FIXME
             (row.gene, row.bin, row.f5, row.ref, row.alt, row.f3)
         )
     
+    for row in tqdm(df_cnv.itertuples(index=False), total=len(df_cnv)):
+        cnv_dict[row.sample_id].append((row.gene, row.total_cn, row.cnv_mut_type))
+    
     # cnv_dict = defaultdict(list) # sample_id -> [(gene, total_cn, mut_type (loss or gain))]
     # for row in tqdm(df_cnv.itertuples(index=False), total=len(df_cnv)):
     #     cnv_dict[row.sample_id].append((row.gene, row.total_cn, row.mut_type))
@@ -50,6 +53,7 @@ def make_dataset(df_mut): # FIXME
         # 'snv_distribution_dict': snv_distribution_dict,
         # 'snv_context_type_dict': snv_context_type_dict,
         'snv_dict': snv_dict,
+        'cnv_dict': cnv_dict,
         'site_dict': site_dict
     }
 
@@ -76,12 +80,12 @@ def main():
     print('Reading the processed mut file')
     df_mut = pd.read_csv(processed_mut_filepath, sep='\t', nrows=test_nrows)
 
-    # print('Reading the processed CNV file')
-    # df_cnv = pd.read_csv(processed_cnv_filepath, sep='\t', nrows=test_nrows)
+    print('Reading the processed CNV file')
+    df_cnv = pd.read_csv(processed_cnv_filepath, sep='\t', nrows=test_nrows)
 
     # Make the dataset
     print('Make the dataset')
-    dataset = make_dataset(df_mut) # FIXME
+    dataset = make_dataset(df_mut, df_cnv) # FIXME
 
     # print(dataset)
 

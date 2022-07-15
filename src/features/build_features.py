@@ -4,7 +4,7 @@
 # from collections import defaultdict
 import numpy as np
 import pickle
-from torch import norm
+import pandas as pd
 from tqdm import tqdm
 from itertools import product
 # from src.utils.hgvs_parsing import is_range
@@ -18,7 +18,12 @@ sub_types = [('C', x) for x in 'AGT'] + [('T', x) for x in 'ACG']
 context_types = [x for x in product('ACGT', sub_types, 'ACGT')]
 with open('./data/processed/census_genes.pkl', 'rb') as f:
 # with open('./data/processed/curated_genes.pkl', 'rb') as f:
+    # census_gene_list = pickle.load(f)
     gene_list = pickle.load(f)
+# df_oncokb = pd.read_csv('./data/external/oncokb_cancer_genes.tsv', sep='\t')
+# df_oncokb = df_oncokb[df_oncokb['MSK-IMPACT'] == 'Yes']
+# oncokb_gene_list = df_oncokb['Hugo Symbol'].to_list()
+# gene_list = [gene for gene in oncokb_gene_list if gene in census_gene_list]
 
 def normalized(vec):
     if np.linalg.norm(vec) != 0:
@@ -48,28 +53,29 @@ def get_snv_vector(sample_id, dataset):
     return normalized_concat([gene_vec, distro_vec, context_type_vec]).reshape(1, -1)
 
 def get_cnv_vector(sample_id, dataset):
+    # cnv_vec = np.zeros(len(gene_list) * 2)
     cnv_vec = np.zeros(len(gene_list) * 2)
 
-    for gene, total_cn, mut_type in dataset['cnv_dict'][sample_id]:
+    for gene, total_cn, cnv_mut_type in dataset['cnv_dict'][sample_id]:
         if gene in gene_list:
             gene_idx = gene_list.index(gene)
-            cnv_vec[1 + gene_idx + 0 if mut_type == 'gain' else 1] = total_cn
+            cnv_vec[gene_idx + (0 if cnv_mut_type == 'gain' else 1)] = 1
+            # cnv_vec[gene_idx] = 1 if cnv_mut_type == 'gain' else -1
     
     return cnv_vec.reshape(1, -1)
 
 def get_feature_matrix(dataset):
     feat_matrix = []
-    # bin_counts = calculate_bin_counts()
-    # for sample_id in tqdm(dataset['sample_ids']):
+    # nonzero_cnv_vec_count = 0
     for sample_id in tqdm(dataset['sample_ids']):
         snv_vec = get_snv_vector(sample_id, dataset)
-        # cnv_vec  = get_cnv_vector(sample_id, dataset)
-        # feat_vec = np.concatenate([cmut_vec, cnv_vec], axis=1)
-        feat_vec = snv_vec
+        cnv_vec  = get_cnv_vector(sample_id, dataset)
+        # nonzero_cnv_vec_count += np.count_nonzero(cnv_vec)
+        feat_vec = np.concatenate([snv_vec, cnv_vec], axis=1)
         feat_matrix.append(feat_vec)
     feat_matrix = np.concatenate(feat_matrix, axis=0, dtype=np.float32)
-    print('Non-zero count:', np.count_nonzero(feat_matrix)) # FIXME
-    # print(feat_matrix)
+    # print('Non-zero count:', np.count_nonzero(feat_matrix)) # FIXME
+    # print('Non-zero count of cnv vecs:', nonzero_cnv_vec_count) # FIXME
     return feat_matrix
 
 def main():
