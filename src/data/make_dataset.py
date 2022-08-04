@@ -1,100 +1,47 @@
-# -----------------------------------------------------------------
-# Make the dataset by processing the COSMIC mutation TSV file
-# Steps:
-#   1. Filter and cleanse the dataframe
-#   2. Make the dataset by constructing an aggregative dictionary
-#   3. Pickle the dataset dict and store it in the disk
-# -----------------------------------------------------------------
-
-import pickle
-import torch
-from collections import defaultdict
 from tqdm import tqdm
 import pandas as pd
 import argparse
 
-def make_dataset(df_mut, df_cnv):
-    '''
-    Make the dataset by constructing the data dictionary
-    '''
-    # lookup_table = get_cds_lookup_table()
-    # loc_dict_mut = get_loc_dict(df_mut)
+def revise_gene(gene):
+    if '_' in gene:
+        gene = gene.split('_')[0]
+    return gene
 
-    sample_ids = set()
-    # cmut_dict = defaultdict(list) # sample_id -> [(coding, mut_type, gene, cmut)]
-    # gmut_dict = defaultdict(list) # sample_id -> [(mut_type, chrom, gpos)]
-    # snv_gene_dict = defaultdict(set)
-    # snv_context_type_dict = defaultdict(list)
-    # snv_distribution_dict = defaultdict(list)
-    snv_dict = defaultdict(list)
-    cnv_dict = defaultdict(list)
-    site_dict = defaultdict(list) # sample_id -> site
+def make_dataset(df_mut):
+    sample_ids = set(df_mut['sample_id'])
+    df_dict = {}
+    site_dict = {}
+    for sample_id in sample_ids:
+        df_sample = df_mut[df_mut['sample_id'] == sample_id][['gene', 'hgvsg']]
+        df_dict[sample_id] = df_sample
 
-    for row in tqdm(df_mut.itertuples(index=False), total=len(df_mut)):
-        sample_ids.add(row.sample_id)
-        site_dict[row.sample_id] = row.site
-        # snv_gene_dict[row.sample_id].add(row.gene)
-        # snv_distribution_dict[row.sample_id].append(row.bin)
-        # snv_context_type_dict[row.sample_id].append((row.f5, (row.ref, row.alt), row.f3))
-        snv_dict[row.sample_id].append(
-            (row.gene, row.bin, row.f5, row.ref, row.alt, row.f3)
-        )
-    
-    for row in tqdm(df_cnv.itertuples(index=False), total=len(df_cnv)):
-        cnv_dict[row.sample_id].append((row.gene, row.total_cn, row.cnv_mut_type))
-    
-    # cnv_dict = defaultdict(list) # sample_id -> [(gene, total_cn, mut_type (loss or gain))]
-    # for row in tqdm(df_cnv.itertuples(index=False), total=len(df_cnv)):
-    #     cnv_dict[row.sample_id].append((row.gene, row.total_cn, row.mut_type))
-
-    dataset = { # Sample mappings
-        'sample_ids': list(sample_ids),
-        # 'snv_gene_dict': snv_gene_dict,
-        # 'snv_distribution_dict': snv_distribution_dict,
-        # 'snv_context_type_dict': snv_context_type_dict,
-        'snv_dict': snv_dict,
-        'cnv_dict': cnv_dict,
-        'site_dict': site_dict
-    }
-
-    # cnt_affected_samples = 0
-    # cnt_affected_mutations = 0
-    # for sample_id in dataset['sample_ids']:
-    #     if before[sample_id] > after[sample_id]:
-    #         cnt_affected_samples += 1
-    #         cnt_affected_mutations += before[sample_id] - after[sample_id]
-    #         # print('Before: {}, after: {}'.format(before[sample_id], after[sample_id]))
-
-    # print('cnt_affected_samples: {}({}), cnt_affected_mutations: {}({})'.format(cnt_affected_samples, len(dataset['sample_ids']), cnt_affected_mutations, sum(before.values())))
-
-    return dataset
+    return df_dict, site_dict
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--test', help='Test with a fraction of rows', type=int)
+    parser.add_argument('--test', help='Test with only a number of rows', type=int)
+    parser.add_argument('--skip', nargs='+')
     args = parser.parse_args()
     test_nrows = args.test
-    processed_mut_filepath = './data/processed/ProcessedGenomeScreensMutantExport.tsv'
-    processed_cnv_filepath = './data/processed/ProcessedCompleteCNA.tsv'
+    skip_files = args.skip
 
-    print('Reading the processed mut file')
-    df_mut = pd.read_csv(processed_mut_filepath, sep='\t', nrows=test_nrows)
+    preprocessed_mut_filepath = './data/processed/CosmicGenomeScreensMutantExport.tsv'
+    dataset_folder = './data/interim/dataset'
+    sample_filepath = dataset_folder + '/samples'
+    site_filepath = dataset_folder + '/sites.tsv'
 
-    print('Reading the processed CNV file')
-    df_cnv = pd.read_csv(processed_cnv_filepath, sep='\t', nrows=test_nrows)
-
-    # Make the dataset
-    print('Make the dataset')
-    dataset = make_dataset(df_mut, df_cnv) # FIXME
-
-    # print(dataset)
-
-    # Store the dataset
-    if not test_nrows:
-        dataset_filepath = './data/interim/dataset.pkl'
-        with open(dataset_filepath, 'wb') as f:
-            pickle.dump(dataset, f)
-        print('The dataset is stored in {}'.format(dataset_filepath))
+    print('Reading the preprocessed mutation file')
+    if not skip_files or 'mut' not in skip_files:
+        df_mut = pd.read_csv(preprocessed_mut_filepath, sep='\t', nrows=test_nrows)
+        sample_ids = list(set(df_mut['sample_id']))
+        site_list = []
+        for sample_id in tqdm(sample_ids):
+            df_sample = df_mut[df_mut['sample_id'] == sample_id]
+            file_name = '/' + str(sample_id) + '.tsv'
+            df_sample[['gene', 'hgvsc', 'hgvsg']].to_csv(sample_filepath + file_name, sep='\t', index=False)
+            site_list.append(df_sample['site'].iloc[0])
+        df_site = pd.DataFrame.from_dict({'sample_id': sample_ids, 'site': site_list})
+        df_site.to_csv(site_filepath, sep='\t', index=False)
 
 if __name__ == '__main__':
     main()

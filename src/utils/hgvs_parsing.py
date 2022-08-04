@@ -5,17 +5,22 @@ def is_range(pos):
     return '_' in str(pos)
 
 def parse_range(pos):
-    return pos.split('_')
+    s, e = pos.split('_')
+    return int(s), int(e)
 
-def parse_mut_type(pos, edit):
+def parse_indel_type(edit):
+    if 'delins' in edit:
+        return 'INDEL_DELINS'
+    else:
+        return 'INDEL_INS' if 'ins' in edit else 'INDEL_DEL'
+
+def parse_mut_type(edit):
     if '>' in edit:
-        return 'SNV'
-    elif 'del' in edit or 'dup' in edit or 'ins' in edit:
-        if is_range(pos):
-            rg_start, rg_end = parse_range(pos)
-            if int(rg_end) - int(rg_start) + 1 >= 1000:
-                return 'CNV'
-        return 'INDEL'
+        return 'SBS'
+    elif 'del' in edit or 'ins' in edit:
+        return parse_indel_type(edit)
+    elif 'dup' in edit:
+        return 'DUP'
     elif 'inv' in edit:
         return 'INV'
     else:
@@ -31,7 +36,7 @@ def parse_hgvs(hgvs):
             sep_idx = idx
             break
     pos, edit = seg[:sep_idx], seg[sep_idx:]
-    mut_type = parse_mut_type(pos, edit)
+    mut_type = parse_mut_type(edit)
     return ac, ref_type, pos, edit, mut_type
 
 # def is_SNV(cmut):
@@ -41,11 +46,17 @@ def is_coding_mut(hgvsc):
     ''' Check if a HGVSC description is from a coding variant '''
     return not ('-' in hgvsc or '*' in hgvsc or '+' in hgvsc)
 
-def parse_snv_edit(edit):
+def parse_sbs_edit(edit):
     ''' C>T '''
     seg = edit.split('>')
     ref, alt = seg[0], seg[1]
     return ref, alt
+
+def parse_ins_edit(edit):
+    if 'delins' in edit:
+        return edit.split('delins')[-1]
+    elif 'ins' in edit:
+        return edit.split('ins')[-1]
 
 # def parse_indel(mut):
 #     if mut[:3] == 'ins':

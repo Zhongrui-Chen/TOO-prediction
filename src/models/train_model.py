@@ -12,11 +12,12 @@ from src.data.preprocess import sites_of_interest
 from src.models.networks.base_fs import BaseNet
 from src.utils.model_versioning import ModelConfigArgumentParser
 import torch.optim as optim
+import pandas as pd
 # from tqdm import tqdm
 
-# Load the dataset dict
-with open('./data/interim/dataset.pkl', 'rb') as f:
-    dataset = pickle.load(f)
+# # Load the dataset dict
+# with open('./data/interim/dataset.pkl', 'rb') as f:
+#     dataset = pickle.load(f)
 
 # Load the feature matrix
 print('[Loading the features]')
@@ -25,9 +26,14 @@ features = np.load(feature_filepath)
 
 def prepare_dataloaders(batch_size, random_state=42): # FIXME: for reproducible
     y = []
-    for sample_id in dataset['sample_ids']:
-        site = dataset['site_dict'][sample_id]
-        y.append(sites_of_interest.index(site))
+    # for sample_id in dataset['sample_ids']:
+    #     site = dataset['site_dict'][sample_id]
+    #     y.append(sites_of_interest.index(site))
+    samples_df = pd.read_csv('./data/interim/dataset/sites.tsv', sep='\t')
+    sample_ids = samples_df['sample_id'].to_list()
+    sites = samples_df['site'].to_list()
+    for idx in range(len(sample_ids)):
+        y.append(sites_of_interest.index(sites[idx]))
     # Split the dataset
     X_train, X_test, y_train, y_test = train_test_split(features, y, test_size=0.2, random_state=random_state)
     # Prepare the data loaders
@@ -140,8 +146,8 @@ def main():
     print('Initializing the model with in_size={}, hidden_size={}, out_size={}'.format(in_size, model_config.hidden_size, out_size))
     model = BaseNet(in_size, model_config.hidden_size, out_size)
     model.to(device)
-    # optimizer = optim.SGD(model.parameters(), lr=model_config.lr, momentum=0.9)
-    optimizer = optim.Adam(model.parameters(), lr=model_config.lr)
+    optimizer = optim.SGD(model.parameters(), lr=model_config.lr, momentum=0.9)
+    # optimizer = optim.Adam(model.parameters(), lr=model_config.lr)
     criterion = nn.CrossEntropyLoss()
 
     # Prepare the training & testing data

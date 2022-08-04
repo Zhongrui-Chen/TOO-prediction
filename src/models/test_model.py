@@ -3,7 +3,7 @@ import torch
 import seaborn as sns
 from matplotlib import pyplot as plt
 import numpy as np
-from sklearn.metrics import confusion_matrix, accuracy_score, balanced_accuracy_score, classification_report, precision_recall_fscore_support
+from sklearn.metrics import confusion_matrix, balanced_accuracy_score, classification_report
 from src.models.networks.base_fs import BaseNet
 from src.utils.model_versioning import ModelConfigArgumentParser
 from src.data.preprocess import sites_of_interest
