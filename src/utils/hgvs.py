@@ -28,7 +28,6 @@ def parse_mut_type(edit):
 
 def parse_hgvs(hgvs):
     ac = hgvs.split(':')[0]
-    ref_type = hgvs.split(':')[1][0]
     seg = hgvs.split('.')[-1]
     # Parse position or range
     for idx, ch in enumerate(seg):
@@ -37,7 +36,7 @@ def parse_hgvs(hgvs):
             break
     pos, edit = seg[:sep_idx], seg[sep_idx:]
     mut_type = parse_mut_type(edit)
-    return ac, ref_type, pos, edit, mut_type
+    return ac, pos, edit, mut_type
 
 # def is_SNV(cmut):
 #     return '>' in cmut
